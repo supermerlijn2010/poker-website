@@ -18,6 +18,7 @@ node server.js
 - De eerste speler is host en kan een ronde starten (minimaal twee spelers vereist).
 - De server gebruikt blinds van 5/10 speelchips en deelt twee kaarten per speler uit.
 - Acties worden om beurten gedaan: fold, check/call, bet/raise.
-- Na de river ga je naar showdown; kies de winnaar om de pot uit te keren en start daarna een nieuwe ronde.
+- Na de river wordt showdown automatisch beoordeeld; de winnende hand ontvangt de pot (verdeeld bij gelijke handen) en wordt in de UI gemarkeerd.
+- Alle kaarten worden zichtbaar bij showdown en de interface toont echte speelkaart-afbeeldingen.
 
 Alle spel- en tafelinformatie blijft in het geheugen van de server. Stop je het proces, dan reset de tafel automatisch.

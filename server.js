@@ -7,6 +7,10 @@ const { randomUUID } = require('crypto');
 const publicDir = path.join(__dirname, 'public');
 const rooms = new Map();
 
+function normalizeRoomCode(code) {
+  return (code || 'table').trim().toLowerCase();
+}
+
 const STAGES = ['waiting', 'preflop', 'flop', 'turn', 'river', 'showdown'];
 const SMALL_BLIND = 5;
 const BIG_BLIND = 10;
@@ -23,6 +27,7 @@ function createRoom(code) {
       community: [],
       deck: [],
       currentPlayerIndex: null,
+      winners: [],
       acted: new Set(),
       message: 'Waiting for players to join.'
     },
@@ -33,10 +38,11 @@ function createRoom(code) {
 }
 
 function getRoom(code) {
-  if (!rooms.has(code)) {
-    return createRoom(code);
+  const normalized = normalizeRoomCode(code);
+  if (!rooms.has(normalized)) {
+    return createRoom(normalized);
   }
-  return rooms.get(code);
+  return rooms.get(normalized);
 }
 
 function shuffleDeck() {
@@ -56,6 +62,103 @@ function shuffleDeck() {
 
 function activePlayers(room) {
   return room.players.filter((p) => !p.folded && p.stack > 0);
+}
+
+function cardValue(card) {
+  const match = card.match(/^(10|[2-9JQKA])([♠♥♦♣])$/);
+  if (!match) return null;
+  const rank = match[1];
+  const suit = match[2];
+  const values = { '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, 10: 10, J: 11, Q: 12, K: 13, A: 14 };
+  return { rank: values[rank], suit, label: rank };
+}
+
+function highestStraight(values) {
+  const unique = [...new Set(values)].sort((a, b) => b - a);
+  // Wheel straight (A-2-3-4-5)
+  if (unique.includes(14)) unique.push(1);
+  for (let i = 0; i <= unique.length - 5; i += 1) {
+    const window = unique.slice(i, i + 5);
+    const isStraight = window.every((v, idx) => idx === 0 || window[idx - 1] - v === 1);
+    if (isStraight) return window[0];
+  }
+  return null;
+}
+
+function evaluateHand(cards) {
+  const parsed = cards.map(cardValue).filter(Boolean);
+  const counts = parsed.reduce((acc, c) => {
+    acc.countByRank[c.rank] = (acc.countByRank[c.rank] || 0) + 1;
+    acc.bySuit[c.suit] = acc.bySuit[c.suit] || [];
+    acc.bySuit[c.suit].push(c.rank);
+    acc.ranks.push(c.rank);
+    return acc;
+  }, { countByRank: {}, bySuit: {}, ranks: [] });
+
+  const ranksDesc = [...counts.ranks].sort((a, b) => b - a);
+  const flushSuit = Object.keys(counts.bySuit).find((s) => counts.bySuit[s].length >= 5);
+  const straightHigh = highestStraight(ranksDesc);
+  const straightFlushHigh = flushSuit ? highestStraight(counts.bySuit[flushSuit]) : null;
+
+  const rankGroups = Object.entries(counts.countByRank)
+    .map(([rank, freq]) => ({ rank: Number(rank), freq }))
+    .sort((a, b) => b.freq - a.freq || b.rank - a.rank);
+
+  const takeKickers = (exclude, limit) => ranksDesc.filter((r) => !exclude.includes(r)).slice(0, limit);
+
+  if (straightFlushHigh) {
+    return { score: [8, straightFlushHigh], name: 'Straight flush' };
+  }
+
+  if (rankGroups[0]?.freq === 4) {
+    const quad = rankGroups[0].rank;
+    const kicker = takeKickers([quad], 1)[0];
+    return { score: [7, quad, kicker], name: 'Four of a kind' };
+  }
+
+  if (rankGroups[0]?.freq === 3 && rankGroups[1]?.freq >= 2) {
+    return { score: [6, rankGroups[0].rank, rankGroups[1].rank], name: 'Full house' };
+  }
+
+  if (flushSuit) {
+    const topFlush = counts.bySuit[flushSuit].sort((a, b) => b - a).slice(0, 5);
+    return { score: [5, ...topFlush], name: 'Flush' };
+  }
+
+  if (straightHigh) {
+    return { score: [4, straightHigh], name: 'Straight' };
+  }
+
+  if (rankGroups[0]?.freq === 3) {
+    const trips = rankGroups[0].rank;
+    const kickers = takeKickers([trips], 2);
+    return { score: [3, trips, ...kickers], name: 'Three of a kind' };
+  }
+
+  if (rankGroups[0]?.freq === 2 && rankGroups[1]?.freq === 2) {
+    const pairHigh = rankGroups[0].rank;
+    const pairLow = rankGroups[1].rank;
+    const kicker = takeKickers([pairHigh, pairLow], 1)[0];
+    return { score: [2, pairHigh, pairLow, kicker], name: 'Two pair' };
+  }
+
+  if (rankGroups[0]?.freq === 2) {
+    const pair = rankGroups[0].rank;
+    const kickers = takeKickers([pair], 3);
+    return { score: [1, pair, ...kickers], name: 'Pair' };
+  }
+
+  const highCards = ranksDesc.slice(0, 5);
+  return { score: [0, ...highCards], name: 'High card' };
+}
+
+function compareScores(a, b) {
+  const len = Math.max(a.length, b.length);
+  for (let i = 0; i < len; i += 1) {
+    const diff = (a[i] || 0) - (b[i] || 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
 }
 
 function nextActiveIndex(room, start) {
@@ -116,10 +219,12 @@ function startRound(room, actorId) {
   room.state.pot = 0;
   room.state.currentBet = 0;
   room.state.acted = new Set();
+  room.state.winners = [];
   room.players.forEach((p) => {
     p.folded = false;
     p.cards = [room.state.deck.pop(), room.state.deck.pop()];
     p.bet = 0;
+    p.bestHand = null;
     if (typeof p.stack !== 'number') {
       p.stack = 1000;
     }
@@ -141,13 +246,52 @@ function advanceStage(room) {
   } else if (room.state.stage === 'river') {
     room.state.stage = 'showdown';
     room.state.currentPlayerIndex = null;
-    room.state.message = 'Showdown! Select the winner to award the pot.';
     resetPlayerBets(room);
+    resolveShowdown(room);
     return;
   }
   resetPlayerBets(room);
   room.state.currentPlayerIndex = nextActiveIndex(room, room.dealerIndex);
   room.state.message = `${room.players[room.state.currentPlayerIndex].name} to act.`;
+}
+
+function resolveShowdown(room) {
+  const contenders = room.players.filter((p) => !p.folded && p.cards && p.cards.length === 2);
+  if (contenders.length === 0) {
+    room.state.message = 'Geen spelers over voor een showdown.';
+    room.state.stage = 'waiting';
+    return;
+  }
+
+  contenders.forEach((p) => {
+    p.bestHand = evaluateHand([...p.cards, ...room.state.community]);
+  });
+
+  let winners = [];
+  contenders.forEach((p) => {
+    if (winners.length === 0) {
+      winners = [p];
+      return;
+    }
+    const diff = compareScores(p.bestHand.score, winners[0].bestHand.score);
+    if (diff > 0) {
+      winners = [p];
+    } else if (diff === 0) {
+      winners.push(p);
+    }
+  });
+
+  const share = Math.floor(room.state.pot / winners.length);
+  const remainder = room.state.pot - share * winners.length;
+  winners.forEach((p, idx) => {
+    p.stack += share + (idx === 0 ? remainder : 0);
+  });
+  room.state.pot = 0;
+  room.state.currentPlayerIndex = null;
+  room.state.stage = 'showdown';
+  room.state.winners = winners.map((p) => p.id);
+  const winnerNames = winners.map((p) => p.name).join(' & ');
+  room.state.message = `${winnerNames} wint de pot (${share}${winners.length > 1 ? ' gedeeld' : ''}) met ${winners[0].bestHand.name}.`;
 }
 
 function autoWin(room, winner) {
@@ -157,6 +301,7 @@ function autoWin(room, winner) {
   room.state.currentPlayerIndex = null;
   room.state.message = `${winner.name} wins the pot! Start a new round when ready.`;
   resetPlayerBets(room);
+  room.state.winners = [];
   room.state.community = [];
 }
 
@@ -246,6 +391,7 @@ function sanitizeRoom(room, playerId) {
     pot: room.state.pot,
     currentBet: room.state.currentBet,
     community: room.state.community,
+    winners: room.state.winners,
     message: room.state.message,
     currentPlayerId: room.state.currentPlayerIndex !== null && room.players[room.state.currentPlayerIndex]
       ? room.players[room.state.currentPlayerIndex].id
@@ -257,7 +403,8 @@ function sanitizeRoom(room, playerId) {
       bet: p.bet,
       folded: p.folded,
       isHost: p.isHost,
-      cards: p.id === playerId ? p.cards : ['❓', '❓']
+      cards: room.state.stage === 'showdown' ? p.cards : (p.id === playerId ? p.cards : ['❓', '❓']),
+      bestHand: room.state.stage === 'showdown' ? p.bestHand : null
     }))
   };
 }
@@ -348,7 +495,7 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && parsedUrl.pathname === '/api/state') {
     const { roomCode, playerId } = parsedUrl.query;
-    const room = getRoom(roomCode || 'default');
+    const room = getRoom(normalizeRoomCode(roomCode));
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify(sanitizeRoom(room, playerId)));
     return;
@@ -362,7 +509,7 @@ const server = http.createServer(async (req, res) => {
         res.end('Name required');
         return;
       }
-      const room = getRoom(roomCode);
+      const room = getRoom(normalizeRoomCode(roomCode));
       const playerId = randomUUID();
       const player = {
         id: playerId,
@@ -393,7 +540,8 @@ const server = http.createServer(async (req, res) => {
         res.end('Missing parameters');
         return;
       }
-      const room = getRoom(roomCode);
+      const normalizedRoomCode = normalizeRoomCode(roomCode);
+      const room = getRoom(normalizedRoomCode);
       const player = room.players.find((p) => p.id === playerId);
       if (!player) throw new Error('Player not found.');
 
@@ -431,7 +579,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && parsedUrl.pathname === '/api/leave') {
     try {
       const { roomCode, playerId } = await collectBody(req);
-      const room = getRoom(roomCode || 'table');
+      const room = getRoom(normalizeRoomCode(roomCode));
       room.players = room.players.filter((p) => p.id !== playerId);
       room.connections = room.connections.filter((c) => c.playerId !== playerId);
       room.state.message = 'A player left the table.';

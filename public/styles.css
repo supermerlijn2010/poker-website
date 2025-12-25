@@ -102,6 +102,10 @@ button.primary {
   margin-top: 8px;
 }
 
+.note.small {
+  font-size: 0.9rem;
+}
+
 .table {
   margin-top: 12px;
   padding: 16px;
@@ -138,6 +142,37 @@ button.primary {
   color: var(--muted);
 }
 
+.card-chip.card-image {
+  padding: 4px;
+  background: #fff;
+  min-width: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card-chip img {
+  width: 64px;
+  height: auto;
+  display: block;
+}
+
+.hidden-card {
+  background: linear-gradient(135deg, #2d2f44, #1b1d2d);
+  border-style: dashed;
+}
+
+.card-row {
+  display: flex;
+  gap: 8px;
+}
+
+.hand-info {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin-top: 6px;
+}
+
 .message {
   background: rgba(255,255,255,0.04);
   border: 1px dashed rgba(255,255,255,0.2);
@@ -160,6 +195,10 @@ button.primary {
   border-radius: 14px;
   border: 1px solid rgba(255,255,255,0.08);
 }
+.player-card.winner {
+  border-color: rgba(46, 204, 113, 0.65);
+  box-shadow: 0 0 0 2px rgba(46, 204, 113, 0.3);
+}
 
 .player-header {
   display: flex;
@@ -175,6 +214,7 @@ button.primary {
 }
 
 .badge.host { background: #f1c40f; }
+.badge.winner { background: #2ecc71; color: #041306; }
 .badge.turn { background: #2ecc71; }
 .badge.folded { background: #e63946; color: #fff; }
 
