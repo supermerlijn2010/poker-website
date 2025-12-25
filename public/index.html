@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Friendly Poker Night</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="layout">
+    <header>
+      <h1>Friendly Poker Night</h1>
+      <p>Speel gratis poker online met je vrienden. Deel een tafelcode, voeg spelers toe en laat de host de rondes starten.</p>
+    </header>
+
+    <section class="card join-card">
+      <div class="form-group">
+        <label for="name">Naam</label>
+        <input id="name" type="text" placeholder="Bijv. Kim" maxlength="20">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="room">Tafelcode</label>
+          <input id="room" type="text" value="table" maxlength="20">
+        </div>
+        <button id="join" class="primary">Join tafel</button>
+      </div>
+      <p class="note">Tip: kies samen een code zoals <strong>vrijdag</strong> en nodig je vrienden uit met dezelfde code. Geen echt geld, alleen speelchips.</p>
+    </section>
+
+    <section class="table" aria-live="polite">
+      <div class="table-meta">
+        <div><strong>Tafel:</strong> <span id="table-code">—</span></div>
+        <div><strong>Fase:</strong> <span id="stage">-</span></div>
+        <div><strong>Pot:</strong> <span id="pot">0</span></div>
+      </div>
+
+      <div class="community" id="community"></div>
+      <div class="message" id="message">Geen spelers verbonden.</div>
+
+      <div class="players" id="players"></div>
+
+      <div class="controls card">
+        <div class="control-row">
+          <button id="start" class="primary">Start ronde (host)</button>
+          <button id="fold">Fold</button>
+          <button id="check-call">Check/Call</button>
+        </div>
+        <div class="control-row">
+          <label for="amount">Bet/Raise</label>
+          <input id="amount" type="number" min="1" value="20">
+          <button id="bet-raise">Bet/Raise</button>
+        </div>
+        <div class="control-row">
+          <label for="winner">Winnaar</label>
+          <select id="winner"></select>
+          <button id="declare">Geef pot</button>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
