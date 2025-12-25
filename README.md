@@ -11,7 +11,7 @@ Een lichte pokerwebsite om gratis met vrienden te spelen. Gebruik een gedeelde t
 node server.js
 ```
 
-3. Open [http://localhost:3000](http://localhost:3000) en vul een naam en tafelcode in. Deel dezelfde code met je vrienden zodat jullie samen aan tafel zitten.
+3. Open [http://localhost:3000](http://localhost:3000) of gebruik het IP-adres van je machine (bijv. `http://192.168.0.10:3000`) zodat vrienden op hetzelfde netwerk kunnen verbinden. Vul een naam en tafelcode in en deel dezelfde code met je vrienden zodat jullie samen aan tafel zitten. Tafelcodes worden automatisch naar kleine letters opgeschoond zodat hoofdletters/spaties geen dubbele kamers maken.
 
 ## Spelverloop
 

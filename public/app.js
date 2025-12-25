@@ -4,7 +4,7 @@ const stateEl = {
   pot: document.getElementById('pot'),
   community: document.getElementById('community'),
   message: document.getElementById('message'),
-  players: document.getElementById('players'),
+  players: document.getElementById('players')
 };
 
 const controls = {

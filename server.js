@@ -596,6 +596,8 @@ const server = http.createServer(async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Poker table running on http://localhost:${PORT}`);
+const HOST = process.env.HOST || '0.0.0.0';
+server.listen(PORT, HOST, () => {
+  const displayHost = HOST === '0.0.0.0' ? 'localhost or your LAN IP' : HOST;
+  console.log(`Poker table running on http://${displayHost}:${PORT}`);
 });
