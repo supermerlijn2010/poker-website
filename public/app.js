@@ -138,7 +138,7 @@ function render(room) {
 
 async function joinRoom() {
   const name = nameInput.value.trim();
-  const code = roomInput.value.trim() || 'table';
+  const code = (roomInput.value.trim() || 'table').toLowerCase();
   if (!name) {
     alert('Vul je naam in.');
     return;
@@ -164,7 +164,7 @@ function subscribe() {
   if (eventSource) {
     eventSource.close();
   }
-  eventSource = new EventSource(`/api/events?roomCode=${roomCode}&playerId=${playerId}`);
+  eventSource = new EventSource(`/api/events?roomCode=${encodeURIComponent(roomCode)}&playerId=${playerId}`);
   eventSource.onmessage = (event) => {
     const room = JSON.parse(event.data);
     render(room);

@@ -7,6 +7,10 @@ const { randomUUID } = require('crypto');
 const publicDir = path.join(__dirname, 'public');
 const rooms = new Map();
 
+function normalizeRoomCode(code) {
+  return (code || 'table').trim().toLowerCase();
+}
+
 const STAGES = ['waiting', 'preflop', 'flop', 'turn', 'river', 'showdown'];
 const SMALL_BLIND = 5;
 const BIG_BLIND = 10;
@@ -33,10 +37,11 @@ function createRoom(code) {
 }
 
 function getRoom(code) {
-  if (!rooms.has(code)) {
-    return createRoom(code);
+  const normalized = normalizeRoomCode(code);
+  if (!rooms.has(normalized)) {
+    return createRoom(normalized);
   }
-  return rooms.get(code);
+  return rooms.get(normalized);
 }
 
 function shuffleDeck() {
@@ -485,7 +490,7 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && parsedUrl.pathname === '/api/state') {
     const { roomCode, playerId } = parsedUrl.query;
-    const room = getRoom(roomCode || 'default');
+    const room = getRoom(normalizeRoomCode(roomCode));
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify(sanitizeRoom(room, playerId)));
     return;
@@ -499,7 +504,7 @@ const server = http.createServer(async (req, res) => {
         res.end('Name required');
         return;
       }
-      const room = getRoom(roomCode);
+      const room = getRoom(normalizeRoomCode(roomCode));
       const playerId = randomUUID();
       const player = {
         id: playerId,
@@ -530,7 +535,8 @@ const server = http.createServer(async (req, res) => {
         res.end('Missing parameters');
         return;
       }
-      const room = getRoom(roomCode);
+      const normalizedRoomCode = normalizeRoomCode(roomCode);
+      const room = getRoom(normalizedRoomCode);
       const player = room.players.find((p) => p.id === playerId);
       if (!player) throw new Error('Player not found.');
 
@@ -568,7 +574,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && parsedUrl.pathname === '/api/leave') {
     try {
       const { roomCode, playerId } = await collectBody(req);
-      const room = getRoom(roomCode || 'table');
+      const room = getRoom(normalizeRoomCode(roomCode));
       room.players = room.players.filter((p) => p.id !== playerId);
       room.connections = room.connections.filter((c) => c.playerId !== playerId);
       room.state.message = 'A player left the table.';
