@@ -26,6 +26,12 @@ function createRoom(code) {
       currentBet: 0,
       community: [],
       deck: [],
+      riggedCommunity: [],
+      rigged: {
+        playerCards: {},
+        community: []
+      },
+      startStack: 1000,
       currentPlayerIndex: null,
       winners: [],
       acted: new Set(),
@@ -61,7 +67,52 @@ function shuffleDeck() {
 }
 
 function activePlayers(room) {
+  return room.players.filter((p) => !p.folded);
+}
+
+function actionablePlayers(room) {
   return room.players.filter((p) => !p.folded && p.stack > 0);
+}
+
+function normalizeCard(input) {
+  if (!input) return null;
+  const trimmed = input.trim().toUpperCase();
+  const match = trimmed.match(/^(10|[2-9JQKA])([SHDC♠♥♦♣])$/i);
+  if (!match) return null;
+  const rank = match[1];
+  const suit = match[2];
+  const suitMap = { S: '♠', H: '♥', D: '♦', C: '♣', '♠': '♠', '♥': '♥', '♦': '♦', '♣': '♣' };
+  return `${rank}${suitMap[suit]}`;
+}
+
+function applyRiggedCards(room, deck) {
+  const rigged = room.state.rigged;
+  const usedCards = new Set();
+
+  const useCard = (card) => {
+    if (usedCards.has(card)) {
+      throw new Error(`Duplicate rigged card: ${card}`);
+    }
+    usedCards.add(card);
+  };
+
+  Object.values(rigged.playerCards).forEach((cards) => {
+    cards.forEach((card) => useCard(card));
+  });
+  rigged.community.forEach((card) => useCard(card));
+
+  const filteredDeck = deck.filter((card) => !usedCards.has(card));
+
+  room.state.riggedCommunity = [...rigged.community];
+  room.players.forEach((player) => {
+    const riggedCards = rigged.playerCards[player.id];
+    if (riggedCards?.length === 2) {
+      player.cards = [...riggedCards];
+    }
+  });
+
+  room.state.rigged = { playerCards: {}, community: [] };
+  return filteredDeck;
 }
 
 function cardValue(card) {
@@ -222,26 +273,41 @@ function startRound(room, actorId) {
   room.state.winners = [];
   room.players.forEach((p) => {
     p.folded = false;
-    p.cards = [room.state.deck.pop(), room.state.deck.pop()];
+    p.cards = ['❓', '❓'];
     p.bet = 0;
     p.bestHand = null;
     if (typeof p.stack !== 'number') {
-      p.stack = 1000;
+      p.stack = room.state.startStack;
+    }
+  });
+  if (room.state.rigged.community.length || Object.keys(room.state.rigged.playerCards).length) {
+    room.state.deck = applyRiggedCards(room, room.state.deck);
+  }
+  room.players.forEach((p) => {
+    if (p.cards[0] === '❓') {
+      p.cards = [room.state.deck.pop(), room.state.deck.pop()];
     }
   });
   room.dealerIndex = room.dealerIndex % room.players.length;
   postBlinds(room);
 }
 
+function dealCommunityCard(room) {
+  if (room.state.riggedCommunity.length > 0) {
+    return room.state.riggedCommunity.shift();
+  }
+  return room.state.deck.pop();
+}
+
 function advanceStage(room) {
   if (room.state.stage === 'preflop') {
-    room.state.community = [room.state.deck.pop(), room.state.deck.pop(), room.state.deck.pop()];
+    room.state.community = [dealCommunityCard(room), dealCommunityCard(room), dealCommunityCard(room)];
     room.state.stage = 'flop';
   } else if (room.state.stage === 'flop') {
-    room.state.community.push(room.state.deck.pop());
+    room.state.community.push(dealCommunityCard(room));
     room.state.stage = 'turn';
   } else if (room.state.stage === 'turn') {
-    room.state.community.push(room.state.deck.pop());
+    room.state.community.push(dealCommunityCard(room));
     room.state.stage = 'river';
   } else if (room.state.stage === 'river') {
     room.state.stage = 'showdown';
@@ -252,7 +318,11 @@ function advanceStage(room) {
   }
   resetPlayerBets(room);
   room.state.currentPlayerIndex = nextActiveIndex(room, room.dealerIndex);
-  room.state.message = `${room.players[room.state.currentPlayerIndex].name} to act.`;
+  if (room.state.currentPlayerIndex === null) {
+    room.state.message = 'Geen actie meer, kaarten worden gedeeld.';
+  } else {
+    room.state.message = `${room.players[room.state.currentPlayerIndex].name} to act.`;
+  }
 }
 
 function resolveShowdown(room) {
@@ -306,13 +376,20 @@ function autoWin(room, winner) {
 }
 
 function evaluateEndOfAction(room) {
-  const active = activePlayers(room);
-  if (active.length === 1) {
-    autoWin(room, active[0]);
+  const participants = activePlayers(room);
+  if (participants.length === 1) {
+    autoWin(room, participants[0]);
     return;
   }
-  const everyoneMatched = active.every((p) => p.bet === room.state.currentBet);
-  const everyoneActed = active.every((p) => room.state.acted.has(p.id));
+  const canAct = actionablePlayers(room);
+  const everyoneMatched = canAct.every((p) => p.bet === room.state.currentBet);
+  const everyoneActed = canAct.every((p) => room.state.acted.has(p.id));
+  if (canAct.length === 0) {
+    while (room.state.stage !== 'showdown') {
+      advanceStage(room);
+    }
+    return;
+  }
   if (room.state.stage !== 'showdown' && everyoneMatched && everyoneActed) {
     advanceStage(room);
   }
@@ -352,17 +429,62 @@ function handleCheckCall(room, player) {
 
 function handleBetRaise(room, player, amount) {
   if (amount <= 0) throw new Error('Bet or raise must be greater than zero.');
+  if (amount > player.stack) throw new Error('Not enough chips to raise.');
   const raiseTo = player.bet + amount;
   if (raiseTo <= room.state.currentBet) {
     throw new Error('Raise must exceed the current bet.');
   }
-  const chips = Math.min(amount, player.stack);
+  const chips = amount;
   player.stack -= chips;
   player.bet += chips;
   room.state.pot += chips;
   room.state.currentBet = player.bet;
   room.state.acted = new Set([player.id]);
   advanceTurn(room);
+}
+
+function handleAllIn(room, player) {
+  if (player.stack <= 0) throw new Error('No chips to go all-in.');
+  const chips = player.stack;
+  player.stack = 0;
+  player.bet += chips;
+  room.state.pot += chips;
+  if (player.bet > room.state.currentBet) {
+    room.state.currentBet = player.bet;
+    room.state.acted = new Set([player.id]);
+  } else {
+    room.state.acted.add(player.id);
+  }
+  evaluateEndOfAction(room);
+  if (room.state.stage !== 'waiting' && room.state.stage !== 'showdown') {
+    advanceTurn(room);
+  }
+}
+
+function ensureHost(room, playerId) {
+  const actor = room.players.find((p) => p.id === playerId);
+  if (!actor || !actor.isHost) {
+    throw new Error('Only the host can do that.');
+  }
+  return actor;
+}
+
+function restartRoom(room, actorId) {
+  ensureHost(room, actorId);
+  room.state.stage = 'waiting';
+  room.state.pot = 0;
+  room.state.currentBet = 0;
+  room.state.community = [];
+  room.state.winners = [];
+  room.state.message = 'Host heeft de tafel gereset.';
+  room.state.currentPlayerIndex = null;
+  room.players.forEach((p) => {
+    p.stack = room.state.startStack;
+    p.bet = 0;
+    p.folded = false;
+    p.cards = ['❓', '❓'];
+    p.bestHand = null;
+  });
 }
 
 function declareWinner(room, winnerId) {
@@ -393,6 +515,7 @@ function sanitizeRoom(room, playerId) {
     community: room.state.community,
     winners: room.state.winners,
     message: room.state.message,
+    startStack: room.state.startStack,
     currentPlayerId: room.state.currentPlayerIndex !== null && room.players[room.state.currentPlayerIndex]
       ? room.players[room.state.currentPlayerIndex].id
       : null,
@@ -510,11 +633,18 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       const room = getRoom(normalizeRoomCode(roomCode));
+      const trimmedName = name.trim().slice(0, 20);
+      const nameTaken = room.players.some((p) => p.name.toLowerCase() === trimmedName.toLowerCase());
+      if (nameTaken) {
+        res.statusCode = 400;
+        res.end('Name already taken at this table.');
+        return;
+      }
       const playerId = randomUUID();
       const player = {
         id: playerId,
-        name: name.trim().slice(0, 20),
-        stack: 1000,
+        name: trimmedName,
+        stack: room.state.startStack,
         bet: 0,
         folded: false,
         cards: ['❓', '❓'],
@@ -561,8 +691,62 @@ const server = http.createServer(async (req, res) => {
           ensureTurn(room, playerId);
           handleBetRaise(room, player, Number(amount || 0));
           break;
+        case 'allIn':
+          ensureTurn(room, playerId);
+          handleAllIn(room, player);
+          break;
         case 'declare':
           declareWinner(room, winnerId);
+          break;
+        case 'restart':
+          restartRoom(room, playerId);
+          break;
+        case 'setStartStack':
+          ensureHost(room, playerId);
+          room.state.startStack = Math.max(0, Number(amount || 0));
+          room.state.message = `Startstack ingesteld op ${room.state.startStack} chips.`;
+          break;
+        case 'setChips': {
+          ensureHost(room, playerId);
+          const target = room.players.find((p) => p.id === winnerId);
+          if (!target) throw new Error('Player not found.');
+          target.stack = Math.max(0, Number(amount || 0));
+          room.state.message = `${target.name} heeft nu ${target.stack} chips.`;
+          break;
+        }
+        case 'giveChips': {
+          ensureHost(room, playerId);
+          const target = room.players.find((p) => p.id === winnerId);
+          if (!target) throw new Error('Player not found.');
+          target.stack += Math.max(0, Number(amount || 0));
+          room.state.message = `${target.name} krijgt chips van de host.`;
+          break;
+        }
+        case 'rigCards': {
+          ensureHost(room, playerId);
+          const target = room.players.find((p) => p.id === winnerId);
+          if (!target) throw new Error('Player not found.');
+          const cards = Array.isArray(amount) ? amount : [];
+          const normalized = cards.map(normalizeCard).filter(Boolean);
+          if (normalized.length !== 2) throw new Error('Provide exactly 2 cards.');
+          room.state.rigged.playerCards[target.id] = normalized;
+          room.state.message = `Kaarten voor ${target.name} zijn vastgezet.`;
+          break;
+        }
+        case 'rigCommunity': {
+          ensureHost(room, playerId);
+          const cards = Array.isArray(amount) ? amount : [];
+          const normalized = cards.map(normalizeCard).filter(Boolean);
+          if (normalized.length > 5) throw new Error('Max 5 community cards.');
+          room.state.rigged.community = normalized;
+          room.state.message = 'Community kaarten zijn vastgezet.';
+          break;
+        }
+        case 'clearRig':
+          ensureHost(room, playerId);
+          room.state.rigged = { playerCards: {}, community: [] };
+          room.state.riggedCommunity = [];
+          room.state.message = 'Rigging gereset.';
           break;
         default:
           throw new Error('Unknown action');

@@ -45,6 +45,7 @@
           <button id="start" class="primary">Start ronde (host)</button>
           <button id="fold">Fold</button>
           <button id="check-call">Check/Call</button>
+          <button id="all-in">All-in</button>
         </div>
         <div class="control-row">
           <label for="amount">Bet/Raise</label>
@@ -52,6 +53,35 @@
           <button id="bet-raise">Bet/Raise</button>
         </div>
         <p class="note small">Showdown wordt automatisch berekend, inclusief splits van de pot bij gelijke handen.</p>
+      </div>
+
+      <div class="controls card host-controls" id="host-controls">
+        <h3>Host tools</h3>
+        <div class="control-row">
+          <label for="host-player">Speler</label>
+          <select id="host-player"></select>
+          <label for="host-amount">Chips</label>
+          <input id="host-amount" type="number" min="0" value="1000">
+          <button id="set-chips" class="primary">Set chips</button>
+          <button id="give-chips">Give chips</button>
+        </div>
+        <div class="control-row">
+          <label for="start-stack">Startstack</label>
+          <input id="start-stack" type="number" min="0" value="1000">
+          <button id="set-start-stack">Set start stack</button>
+          <button id="restart-round" class="danger">Restart</button>
+        </div>
+        <div class="control-row">
+          <label for="rig-cards">Rig kaarten (2)</label>
+          <input id="rig-cards" type="text" placeholder="AS, KH">
+          <button id="rig-player">Rig speler</button>
+        </div>
+        <div class="control-row">
+          <label for="rig-community">Rig community (max 5)</label>
+          <input id="rig-community" type="text" placeholder="AS, KH, 10D, 2C, 7S">
+          <button id="rig-community-btn">Rig community</button>
+          <button id="clear-rig" class="danger">Clear rig</button>
+        </div>
       </div>
     </section>
   </main>

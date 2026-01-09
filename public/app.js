@@ -11,6 +11,7 @@ const controls = {
   start: document.getElementById('start'),
   fold: document.getElementById('fold'),
   checkCall: document.getElementById('check-call'),
+  allIn: document.getElementById('all-in'),
   betRaise: document.getElementById('bet-raise'),
   amount: document.getElementById('amount')
 };
@@ -18,6 +19,21 @@ const controls = {
 const joinButton = document.getElementById('join');
 const nameInput = document.getElementById('name');
 const roomInput = document.getElementById('room');
+const hostControls = document.getElementById('host-controls');
+const hostPlayerSelect = document.getElementById('host-player');
+const hostAmountInput = document.getElementById('host-amount');
+const startStackInput = document.getElementById('start-stack');
+const rigCardsInput = document.getElementById('rig-cards');
+const rigCommunityInput = document.getElementById('rig-community');
+const hostButtons = {
+  setChips: document.getElementById('set-chips'),
+  giveChips: document.getElementById('give-chips'),
+  setStartStack: document.getElementById('set-start-stack'),
+  restart: document.getElementById('restart-round'),
+  rigPlayer: document.getElementById('rig-player'),
+  rigCommunity: document.getElementById('rig-community-btn'),
+  clearRig: document.getElementById('clear-rig')
+};
 
 let playerId = null;
 let roomCode = null;
@@ -138,12 +154,29 @@ function render(room) {
   const isMyTurn = room.currentPlayerId === playerId;
   controls.fold.disabled = !isMyTurn;
   controls.checkCall.disabled = !isMyTurn;
+  controls.allIn.disabled = !isMyTurn;
   controls.betRaise.disabled = !isMyTurn;
   controls.amount.disabled = !isMyTurn;
-  controls.start.disabled = !room.players.find((p) => p.id === playerId && p.isHost);
+  const isHost = room.players.find((p) => p.id === playerId && p.isHost);
+  controls.start.disabled = !isHost;
+  controls.start.style.display = isHost ? '' : 'none';
+  hostControls.classList.toggle('is-host', Boolean(isHost));
+  hostControls.setAttribute('aria-hidden', isHost ? 'false' : 'true');
+  startStackInput.value = room.startStack ?? 1000;
+  hostPlayerSelect.innerHTML = '';
+  room.players.forEach((p) => {
+    const option = document.createElement('option');
+    option.value = p.id;
+    option.textContent = `${p.name} (${p.stack} chips)`;
+    hostPlayerSelect.appendChild(option);
+  });
 }
 
 async function joinRoom() {
+  if (playerId) {
+    alert('Je bent al gejoined in deze sessie.');
+    return;
+  }
   const name = nameInput.value.trim();
   const code = (roomInput.value.trim() || 'table').toLowerCase();
   if (!name) {
@@ -181,6 +214,14 @@ function subscribe() {
   };
 }
 
+function parseCardList(input) {
+  if (!input) return [];
+  return input
+    .split(',')
+    .map((card) => card.trim())
+    .filter(Boolean);
+}
+
 async function sendAction(type, extra = {}) {
   if (!roomCode || !playerId) return;
   const res = await fetch('/api/action', {
@@ -197,7 +238,28 @@ joinButton.addEventListener('click', joinRoom);
 controls.start.addEventListener('click', () => sendAction('start'));
 controls.fold.addEventListener('click', () => sendAction('fold'));
 controls.checkCall.addEventListener('click', () => sendAction('checkCall'));
+controls.allIn.addEventListener('click', () => sendAction('allIn'));
 controls.betRaise.addEventListener('click', () => sendAction('betRaise', { amount: Number(controls.amount.value) }));
+hostButtons.setChips.addEventListener('click', () => sendAction('setChips', {
+  winnerId: hostPlayerSelect.value,
+  amount: Number(hostAmountInput.value)
+}));
+hostButtons.giveChips.addEventListener('click', () => sendAction('giveChips', {
+  winnerId: hostPlayerSelect.value,
+  amount: Number(hostAmountInput.value)
+}));
+hostButtons.setStartStack.addEventListener('click', () => sendAction('setStartStack', {
+  amount: Number(startStackInput.value)
+}));
+hostButtons.restart.addEventListener('click', () => sendAction('restart'));
+hostButtons.rigPlayer.addEventListener('click', () => sendAction('rigCards', {
+  winnerId: hostPlayerSelect.value,
+  amount: parseCardList(rigCardsInput.value)
+}));
+hostButtons.rigCommunity.addEventListener('click', () => sendAction('rigCommunity', {
+  amount: parseCardList(rigCommunityInput.value)
+}));
+hostButtons.clearRig.addEventListener('click', () => sendAction('clearRig'));
 
 window.addEventListener('beforeunload', () => {
   if (playerId) {

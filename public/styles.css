@@ -97,6 +97,13 @@ button.primary {
   font-weight: 700;
 }
 
+button.danger {
+  background: linear-gradient(135deg, #b0242f, #e0606c);
+  border: none;
+  color: #fff;
+  font-weight: 700;
+}
+
 .note {
   color: var(--muted);
   margin-top: 8px;
@@ -225,6 +232,19 @@ button.primary {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.host-controls {
+  display: none;
+}
+
+.host-controls.is-host {
+  display: flex;
+}
+
+.host-controls h3 {
+  margin: 0;
+  font-size: 1.1rem;
 }
 
 .control-row {
